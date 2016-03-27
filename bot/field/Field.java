@@ -20,6 +20,7 @@ package field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import move.Move;
@@ -40,6 +41,7 @@ public class Field {
     private int rows;
     private int cols;
     private Field lastField;
+    private double[][] laplace;
 
     private int[][] field;
     private GroupData groupData;
@@ -190,14 +192,17 @@ public class Field {
     }
 
     private void groupVisit( boolean[][] visited, int row, int col, Group currentGroup ) {
-        if ( visited[row][col] ) {
-            return;
-        }
         int playerId = this.field[row][col];
         if ( playerId == 0 ) {
             currentGroup.addLiberty( new Move( row, col ) );
+            return;
         } else if ( playerId != currentGroup.getPlayerId() ) {
             currentGroup.addOpponent( new Move( row, col ) );
+            return;
+        }
+
+        if ( visited[row][col] ) {
+            return;
         } else {
             visited[row][col] = true;
             currentGroup.addMove( new Move( row, col ) );
@@ -246,6 +251,7 @@ public class Field {
     private void setPlayer( int row, int col, int playerId ) {
         this.field[row][col] = playerId;
         this.groupData = null;
+        this.laplace = null;
     }
 
     public List<Move> validAdjacentPoints( Move m ) {
@@ -260,6 +266,23 @@ public class Field {
             int newCol = col + offset[1];
             if ( newRow >= 0 && newRow < this.cols && newCol >= 0 && newCol < this.rows ) {
                 moves.add( new Move( newRow, newCol ) );
+            }
+        }
+        return moves;
+    }
+
+    public List<Move> validAdjacentAndDiagonalPoints( int row, int col ) {
+        ArrayList<Move> moves = new ArrayList<>();
+        for ( int i = -1; i <= 1; i++ ) {
+            for ( int j = -1; j <= 1; j++ ) {
+                if ( i == 0 && j == 0 ) {
+                    continue;
+                }
+                int newRow = row + i;
+                int newCol = col + j;
+                if ( newRow >= 0 && newRow < this.cols && newCol >= 0 && newCol < this.rows ) {
+                    moves.add( new Move( newRow, newCol ) );
+                }
             }
         }
         return moves;
@@ -357,5 +380,62 @@ public class Field {
 
     public int[][] getField() {
         return this.field;
+    }
+
+    public double getLaplaceGroupSize( Move m, double lowerBound ) {
+        calculateLaplace();
+        Function<Double, Boolean> membershipTest = this.laplace[m.getRow()][m.getCol()] > 0 ? x -> x > lowerBound : x -> x < -lowerBound;
+
+        boolean[][] visited = new boolean[this.rows][this.cols];
+        return getLaplaceGroupSizeRecurse( visited, m.getRow(), m.getCol(), membershipTest );
+    }
+
+    private double getLaplaceGroupSizeRecurse( boolean[][] visited, int row, int col, Function<Double, Boolean> test ) {
+        if ( visited[row][col] ) {
+            return 0;
+        }
+        if ( test.apply( this.laplace[row][col] ) ) {
+            visited[row][col] = true;
+            int count = 1;
+            for ( Move m : this.validAdjacentPoints( new Move( row, col ) ) ) {
+                count += getLaplaceGroupSizeRecurse( visited, m.getRow(), m.getCol(), test );
+            }
+            return count;
+        } else {
+            return 0;
+        }
+    }
+
+    public double getLaplace( Move m ) {
+        calculateLaplace();
+        return this.laplace[m.getRow()][m.getCol()];
+    }
+
+    public double[][] getLaplace() {
+        calculateLaplace();
+        return this.laplace;
+    }
+
+    private void calculateLaplace() {
+        if ( this.laplace != null ) {
+            return;
+        }
+
+        this.laplace = new double[this.getRows()][this.getColumns()];
+        for ( int i = 0; i < this.getRows() * 2; i++ ) {
+            for ( int row = 0; row < this.getRows(); row++ ) {
+                for ( int col = 0; col < this.getColumns(); col++ ) {
+                    int player = this.getPlayerAt( row, col );
+                    if ( player == this.getMyId() ) {
+                        this.laplace[row][col] = 1;
+                    } else if ( player != 0 ) {
+                        this.laplace[row][col] = -1;
+                    } else {
+                        List<Move> adjacent = this.validAdjacentPoints( row, col );
+                        this.laplace[row][col] = adjacent.stream().mapToDouble( m -> this.laplace[m.getRow()][m.getCol()] ).average().getAsDouble();
+                    }
+                }
+            }
+        }
     }
 }

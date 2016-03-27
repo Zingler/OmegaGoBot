@@ -32,7 +32,8 @@ public class AttackFromStrengthStrategy implements AttackingMoveStrategy {
             for ( Move m : g.getLiberties() ) {
                 Field newField = field.simulateMyMove( m );
                 int myLiberties = newField.getGroupAt( m.getRow(), m.getCol() ).map( Group::getLibertyCount ).orElse( 0 );
-                moves.add( new Score<Move>( m, -myLiberties ) );
+                double groupSize = newField.getLaplaceGroupSize( m, .3 );
+                moves.add( new Score<Move>( m, -( myLiberties + ( groupSize / 3 ) ) ) );
             }
         }
         Collections.sort( moves );

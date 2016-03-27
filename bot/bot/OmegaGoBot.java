@@ -32,8 +32,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import move.Move;
-import util.MaxSizePriorityQueue;
-import util.MaxSizePriorityQueue.Score;
 import bot.strategies.AttackFromStrengthStrategy;
 import bot.strategies.AttackGroupCandidateStrategy;
 import bot.strategies.AttackingMoveStrategy;
@@ -41,6 +39,7 @@ import bot.strategies.ForcedMovedAttackStrategy;
 import bot.strategies.LibertySizeRatioAttackCandidateStrategy;
 import bot.strategies.SequentialAttackGroupCandidateStrategy;
 import bot.strategies.SequentialAttackingMoveStrategy;
+import bot.strategies.SmallLaplaceGroupCandidateStrategy;
 import field.Field;
 import field.Group;
 
@@ -56,12 +55,14 @@ import field.Group;
 public class OmegaGoBot implements Bot {
 
     AttackGroupCandidateStrategy attackCandidateStrategy = SequentialAttackGroupCandidateStrategy.builder()
+            .strat( new SmallLaplaceGroupCandidateStrategy() )
             .strat( new LibertySizeRatioAttackCandidateStrategy() ).build();
     private AttackingMoveStrategy attackStrategy = SequentialAttackingMoveStrategy.builder()
             .strat( new ForcedMovedAttackStrategy() )
             .strat( new AttackFromStrengthStrategy() ).build();
 
     OneLibertyLogic oneLiberyLogic = new OneLibertyLogic();
+    HardcodedPatternMoves hardcodedPatternMoves = new HardcodedPatternMoves();
 
     List<DiagnosticRecorder> recorders = new ArrayList<>();
     {
@@ -101,7 +102,7 @@ public class OmegaGoBot implements Bot {
 
         double[][] heatMap = influenceHeatMap( f );
         finalMove.influenceHeatMap( heatMap );
-        double[][] laplace = laplace( f );
+        double[][] laplace = f.getLaplace();
         finalMove.laplace( laplace );
 
         List<Move> availableMoves = f.getAvailableMoves();
@@ -117,7 +118,6 @@ public class OmegaGoBot implements Bot {
         }
 
         List<Move> oneLibertyMoves = this.oneLiberyLogic.getOneLibertyMoves( f );
-
         List<Move> safeOneLibertyMoves = oneLibertyMoves.stream().filter( notHoribleMoves::contains ).collect( Collectors.toList() );
 
         if ( !safeOneLibertyMoves.isEmpty() ) {
@@ -126,11 +126,19 @@ public class OmegaGoBot implements Bot {
             finalMove.type( "Save or capture largest" );
             return finalMove;
         }
+
+        List<Move> patternMoves = this.hardcodedPatternMoves.getMoves( state, f ).stream()
+                .filter( notHoribleMoves::contains ).collect( Collectors.toList() );
+        if ( !patternMoves.isEmpty() ) {
+            setIfNonEmpty( finalMove, patternMoves );
+            return finalMove.type( "Hardcoded pattern moves" );
+        }
+
         if ( state.getRoundNumber() < 2 ) {
             List<Move> best = minBy( notHoribleMoves, ( Move m ) -> edgeCenterHeuristic( m, f ), 5 );
             setIfNonEmpty( finalMove, best );
             return finalMove.type( "Opening Corners" );
-        } else if ( state.getRoundNumber() < 6 ) {
+        } else if ( state.getRoundNumber() < 0 ) {
             List<Move> best = minBy( notHoribleMoves, ( Move m ) -> centerHeuristic( m, f ), 5 );
             setIfNonEmpty( finalMove, best );
             return finalMove.type( "Opening Circle" );
@@ -188,29 +196,6 @@ public class OmegaGoBot implements Bot {
         // moveCount ) ) ).type( "Random" );
     }
 
-    private List<Move> attackWeakHeruistic( Map<Group, Double> groupsToAttackScore, Field f ) {
-        double attackThreshold = .8;
-        List<Group> targets = groupsToAttackScore.entrySet().stream().filter( e -> e.getValue() > attackThreshold ).map( Entry::getKey )
-                .collect( Collectors.toList() );
-
-        MaxSizePriorityQueue<Move> bestMoves = new MaxSizePriorityQueue<>( 10, true );
-        // TODO this is way oversimplified
-        for ( Group g : targets ) {
-            Move someMoveInGroup = g.getMoves().iterator().next();
-            for ( Move m : g.getLiberties() ) {
-                Field test = f.simulateMyMove( m );
-                Optional<Group> group = test.getGroupAt( someMoveInGroup.getRow(), someMoveInGroup.getCol() );
-                int remainingLiberties = 0;
-                if ( group.isPresent() ) {
-                    remainingLiberties = group.get().getLibertyCount();
-                }
-                bestMoves.put( m, remainingLiberties );
-            }
-        }
-
-        return bestMoves.getAll().stream().map( Score::getElement ).collect( Collectors.toList() );
-    }
-
     private void setIfNonEmpty( MoveWithDiagnostics finalMove, List<Move> bestMoves ) {
         if ( !bestMoves.isEmpty() ) {
             finalMove.move( bestMoves.get( 0 ) ).otherTopMoves( rest( bestMoves ) );
@@ -258,26 +243,6 @@ public class OmegaGoBot implements Bot {
             }
         }
         return influence;
-    }
-
-    private double[][] laplace( Field f ) {
-        double[][] laplace = new double[f.getRows()][f.getColumns()];
-        for ( int i = 0; i < f.getRows() * 2; i++ ) {
-            for ( int row = 0; row < f.getRows(); row++ ) {
-                for ( int col = 0; col < f.getColumns(); col++ ) {
-                    int player = f.getPlayerAt( row, col );
-                    if ( player == f.getMyId() ) {
-                        laplace[row][col] = 1;
-                    } else if ( player != 0 ) {
-                        laplace[row][col] = -1;
-                    } else {
-                        List<Move> adjacent = f.validAdjacentPoints( row, col );
-                        laplace[row][col] = adjacent.stream().mapToDouble( m -> laplace[m.getRow()][m.getCol()] ).average().getAsDouble();
-                    }
-                }
-            }
-        }
-        return laplace;
     }
 
     private double edgeCenterHeuristic( Move m, Field f ) {
