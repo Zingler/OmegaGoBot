@@ -6,7 +6,7 @@ import lombok.Getter;
 import move.Move;
 import bot.Bot;
 import bot.GameState;
-import bot.MovesWithDiagnostics;
+import bot.MoveWithDiagnostics;
 import bot.OmegaGoBot;
 import field.Field;
 
@@ -17,7 +17,7 @@ public class Game {
     private ArrayList<Bot> players;
     private Field currentField;
     private GameState currentState;
-    private MovesWithDiagnostics lastMoveDiagnostics;
+    private MoveWithDiagnostics lastMoveDiagnostics;
 
     public Game() {
         this.currentField = new Field().setColumns( 19 ).setRows( 19 ).setMyId( 1 ).setOpponentId( 2 ).initField();
@@ -33,9 +33,9 @@ public class Game {
     }
 
     public void step() {
-        MovesWithDiagnostics move = this.players.get( this.player - 1 ).getMoveWithDiagnostics( this.currentState, 1000 );
+        MoveWithDiagnostics move = this.players.get( this.player - 1 ).getMoveWithDiagnostics( this.currentState, 1000 );
         this.lastMoveDiagnostics = move;
-        play( move.getMove() );
+        play( move.move() );
     }
 
     private void play( Move move ) {

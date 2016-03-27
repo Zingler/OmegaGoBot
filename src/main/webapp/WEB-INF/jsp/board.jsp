@@ -8,11 +8,19 @@
 <script type="text/javascript" src="/js/visualizer.js"></script>
 
 <style>
+.tables {
+	flex-wrap: wrap;
+	justify-context: space-around;
+	display: flex;
+}
+.tables .section {
+	padding: 10px;
+}
+
 table {
     width: 400px;
     height: 400px;
-    table-layout: fixed;
-     float: left;
+    
 }
 table, td {
  border: 1px solid black;
@@ -21,7 +29,7 @@ table, td {
 
 table td {
 	width: 4.3%;
-	height: 20px;
+	height: 15px;
 	text-align: center;
     padding: 0;
 }
@@ -39,11 +47,17 @@ table td {
 <body>
 
 <button data-bind="click: step" >Advance turn</button>
+Number of turns: <input data-bind="value: numSteps"/>
 <p>Have bot play after human move?
 <input type="checkbox" data-bind="checked: botPlayAfterHuman"/>
 </p>
 
-<div>
+<p>Last move played was of type: <span data-bind="text: lastMoveType"></span></p>
+<p>Time taken: <span data-bind="text: time"></span>ms</p>
+
+<div class="tables">
+<div class="section">
+Board
 <table>
 <tbody data-bind="foreach: board">
 	<tr data-bind="foreach: $data">
@@ -53,25 +67,24 @@ table td {
 	</tr>
 </tbody>
 </table>
+</div>
 
+<!-- ko foreach: boardViews -->
+<div class="section">
+<span data-bind="text: label"></span>
 <table>
-<tbody data-bind="foreach: influenceColors">
+<tbody data-bind="foreach: cells">
 	<tr data-bind="foreach: $data">
-		<td data-bind="style: {backgroundColor: $data}"></td>
+		<td data-bind="style: {backgroundColor: color}, attr: {title: value}">
+			<span data-bind="text: symbol"></span>
+		</td>
 	</tr>
 </tbody>
 </table>
-<div>
+</div>
+<!-- /ko -->
 
-<div>
-<table>
-<tbody data-bind="foreach: laplaceColors">
-	<tr data-bind="foreach: $data">
-		<td data-bind="style: {backgroundColor: $data}"></td>
-	</tr>
-</tbody>
-</table>
-<div>
+</div>
 
 </body>
 <script>

@@ -84,4 +84,13 @@ public class FieldTest {
         Assert.assertThat( g.getLibertyCount(), Is.is( 0 ) );
     }
 
+    @Test
+    public void simulateSuicideMove() {
+        this.field.setField( new int[][] { { 0, 2, 0 }, { 2, 0, 2 }, { 0, 2, 0 } } );
+
+        Field newField = this.field.simulateCurrentPlayerMoveAndSwitch( new Move( 1, 1 ) );
+
+        Assert.assertThat( newField.getPlayerAt( 1, 1 ), Is.is( 0 ) );
+    }
+
 }

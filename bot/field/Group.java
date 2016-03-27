@@ -1,49 +1,35 @@
 package field;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
+import lombok.Data;
 import move.Move;
 
+@Data
 public class Group {
-    List<Move> moves;
-    List<Move> liberties;
-    private int playerId;
-
-    public Group( Move m, List<Move> liberties ) {
-        this.moves = new ArrayList<>();
-        this.moves.add( m );
-        this.liberties = liberties;
-    }
-
-    public Group( List<Move> moves, List<Move> liberties ) {
-        this.moves = moves;
-        this.liberties = liberties;
-    }
-
-    public static Group merge( Group one, Group other ) {
-        one.moves.addAll( other.getMoves() );
-        one.liberties.addAll( other.liberties );
-        return one;
-    }
-
-    public List<Move> getMoves() {
-        return this.moves;
-    }
-
-    public void setPlayerId( int playerId ) {
-        this.playerId = playerId;
-    }
-
-    public int getPlayerId() {
-        return this.playerId;
-    }
+    Set<Move> moves = new HashSet<>();
+    Set<Move> opponentMoves = new HashSet<>();
+    Set<Move> liberties = new HashSet<>();
+    private final int playerId;
 
     public int getLibertyCount() {
         return this.liberties.size();
     }
 
-    public List<Move> getLiberties() {
-        return this.liberties;
+    public void addMove( Move move ) {
+        this.moves.add( move );
+    }
+
+    public void addLiberty( Move move ) {
+        this.liberties.add( move );
+    }
+
+    public void addOpponent( Move move ) {
+        this.opponentMoves.add( move );
+    }
+
+    public Move getAnyMove() {
+        return this.moves.iterator().next();
     }
 }

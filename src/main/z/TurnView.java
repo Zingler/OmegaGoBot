@@ -1,5 +1,6 @@
 package z;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -7,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
+import lombok.Singular;
 import move.Move;
 import util.ArrayStream;
 
@@ -18,9 +20,12 @@ public class TurnView {
     public static final Map<Integer, String> playerSymbols = ImmutableMap.of( 0, " ", 1, "●", 2, "○" );
 
     public transient int[][] playerMap;
-    public List<List<String>> influenceColors;
-    public List<List<String>> laplaceColors;
+    @Singular
+    public List<BoardView> boardViews = new ArrayList<>();
+
     public Move lastMove;
+    public String lastMoveType;
+    public long time;
     public List<Move> otherMovesConsidered;
 
     @Getter( lazy = true )
@@ -35,7 +40,19 @@ public class TurnView {
                     .get( m.getCol() )
                     .setConsideredMove( true ) );
         }
+        for ( BoardView v : this.boardViews ) {
+            for ( int i = 0; i < v.getCells().size(); i++ ) {
+                for ( int j = 0; j < v.getCells().get( i ).size(); j++ ) {
+                    v.getCells().get( i ).get( j ).setSymbol( this.getBoard().get( i ).get( j ).getSymbol() );
+                }
+            }
+        }
+
         return this;
+    }
+
+    public void addBoardView( BoardView view ) {
+        this.boardViews.add( view );
     }
 
     @Data

@@ -18,12 +18,12 @@
 package field;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import move.Move;
+import util.ArrayStream;
 
 /**
  * Field class
@@ -42,6 +42,7 @@ public class Field {
     private Field lastField;
 
     private int[][] field;
+    private GroupData groupData;
 
     public Field() {
     }
@@ -163,63 +164,92 @@ public class Field {
         return !g.isPresent();
     }
 
-    public Optional<Group> getGroupAt( int row, int col ) {
+    public GroupData getGroups() {
+        if ( this.groupData != null ) {
+            return this.groupData;
+        }
+
+        List<List<Group>> groupTable = ArrayStream.mapToList( this.field, x -> null );
+
+        boolean[][] visited = new boolean[this.rows][this.cols];
+        for ( int i = 0; i < this.rows; i++ ) {
+            for ( int j = 0; j < this.cols; j++ ) {
+                int playerId = this.field[i][j];
+                if ( !visited[i][j] && playerId != 0 ) {
+                    Group g = new Group( playerId );
+                    g.addMove( new Move( i, j ) );
+                    groupVisit( visited, i, j, g );
+
+                    for ( Move m : g.getMoves() ) {
+                        groupTable.get( m.getRow() ).set( m.getCol(), g );
+                    }
+                }
+            }
+        }
+        return new GroupData( groupTable );
+    }
+
+    private void groupVisit( boolean[][] visited, int row, int col, Group currentGroup ) {
+        if ( visited[row][col] ) {
+            return;
+        }
         int playerId = this.field[row][col];
         if ( playerId == 0 ) {
-            return Optional.empty();
-        }
-        Group g = getGroupRec( new int[this.rows][this.cols], playerId, row, col );
-        g.setPlayerId( playerId );
-        return Optional.of( g );
-    }
-
-    private static class CountingState {
-        public static final int NONE = 0;
-        public static final int PART_OF_GROUP = 1;
-        public static final int LIBERTY = 2;
-    }
-
-    private Group getGroupRec( final int[][] visitState, int playerId, int row, int col ) {
-        if ( visitState[row][col] != CountingState.NONE ) {
-            return new Group( Collections.EMPTY_LIST, Collections.EMPTY_LIST );
-        }
-        visitState[row][col] = CountingState.PART_OF_GROUP;
-
-        List<Move> liberties = new ArrayList<>();
-        List<Move> nextMoves = new ArrayList<>();
-        for ( Move m : validAdjacentPoints( row, col ) ) {
-            if ( visitState[m.getRow()][m.getCol()] != CountingState.NONE ) {
-                continue;
-            }
-
-            int playerAtM = this.field[m.getRow()][m.getCol()];
-            if ( playerAtM == 0 ) {
-                liberties.add( m );
-                visitState[m.getRow()][m.getCol()] = CountingState.LIBERTY;
-            } else if ( playerAtM == playerId ) {
-                nextMoves.add( m );
+            currentGroup.addLiberty( new Move( row, col ) );
+        } else if ( playerId != currentGroup.getPlayerId() ) {
+            currentGroup.addOpponent( new Move( row, col ) );
+        } else {
+            visited[row][col] = true;
+            currentGroup.addMove( new Move( row, col ) );
+            for ( Move m : validAdjacentPoints( row, col ) ) {
+                groupVisit( visited, m.getRow(), m.getCol(), currentGroup );
             }
         }
-        Group g = new Group( new Move( row, col ), liberties );
-        Group result = nextMoves.stream().map( move -> getGroupRec( visitState, playerId, move.getRow(), move.getCol() ) ).reduce( g, Group::merge );
-        return result;
+    }
+
+    public Optional<Group> getGroupAt( int row, int col ) {
+        return Optional.ofNullable( this.getGroups().getGroupTable().get( row ).get( col ) );
     }
 
     public Field simulateMyMove( Move move ) {
         Field newField = this.copy();
-        newField.field[move.getRow()][move.getCol()] = this.myId;
+        newField.setPlayer( move.getRow(), move.getCol(), this.myId );
         List<Move> validPoints = this.validAdjacentPoints( move.getRow(), move.getCol() );
         List<Group> surroundingGroups = validPoints.stream().map( m -> newField.getGroupAt( m.getRow(), m.getCol() ) ).filter( Optional::isPresent )
                 .map( Optional::get ).collect( Collectors.toList() );
         for ( Group g : surroundingGroups ) {
             if ( g.getLibertyCount() == 0 ) {
                 for ( Move m : g.getMoves() ) {
-                    newField.field[m.getRow()][m.getCol()] = 0;
+                    newField.setPlayer( m.getRow(), m.getCol(), 0 );
                 }
             }
         }
+        // Check for suicide for when myplayer plays in middle of 4 other
+        // stones, and none of them died
+        if ( newField.validAdjacentPoints( move ).stream().allMatch( m -> newField.getPlayerAt( m.getRow(), m.getCol() ) == this.opponentId ) )
+        {
+            newField.setPlayer( move.getRow(), move.getCol(), 0 );
+        }
+
         newField.setLastField( this );
         return newField;
+    }
+
+    public Field simulateCurrentPlayerMoveAndSwitch( Move move ) {
+        Field nf = this.simulateMyMove( move );
+        int myOldId = nf.getMyId();
+        nf.setMyId( nf.getOpponentId() );
+        nf.setOpponentId( myOldId );
+        return nf;
+    }
+
+    private void setPlayer( int row, int col, int playerId ) {
+        this.field[row][col] = playerId;
+        this.groupData = null;
+    }
+
+    public List<Move> validAdjacentPoints( Move m ) {
+        return validAdjacentPoints( m.getRow(), m.getCol() );
     }
 
     public List<Move> validAdjacentPoints( int row, int col ) {

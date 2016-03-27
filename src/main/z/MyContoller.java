@@ -1,5 +1,6 @@
 package z;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -9,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import util.ArrayStream;
-import bot.MovesWithDiagnostics;
+import bot.MoveWithDiagnostics;
 
 @Controller
 public class MyContoller {
@@ -35,13 +36,17 @@ public class MyContoller {
         while ( steps-- > 0 ) {
             this.game.step();
         }
-        MovesWithDiagnostics lastMoveDiagnostics = this.game.getLastMoveDiagnostics();
+        MoveWithDiagnostics lastMoveDiagnostics = this.game.getLastMoveDiagnostics();
         return TurnView.builder()
                 .playerMap( this.game.getCurrentField().getField() )
-                .influenceColors( heatMapColors( lastMoveDiagnostics.getInfluenceHeatMap() ) )
-                .laplaceColors( heatMapColors( lastMoveDiagnostics.getLaplace() ) )
-                .lastMove( lastMoveDiagnostics.getMove() )
-                .otherMovesConsidered( lastMoveDiagnostics.getOtherTopMoves() ).build().finish();
+                .boardView( BoardView.builder().label( "Laplace" ).cells( heatMapColors( lastMoveDiagnostics.laplace() ) ).build() )
+                .boardView( BoardView.builder().label( "Attack Scores" ).cells( heatMapColors( lastMoveDiagnostics.attackScores() ) ).build() )
+                .boardView( BoardView.builder().label( "Exponential Influence" ).cells( heatMapColors( lastMoveDiagnostics.influenceHeatMap() ) )
+                        .build() )
+                .lastMove( lastMoveDiagnostics.move() )
+                .lastMoveType( lastMoveDiagnostics.type() )
+                .time( lastMoveDiagnostics.millis() )
+                .otherMovesConsidered( lastMoveDiagnostics.otherTopMoves() ).build().finish();
     }
 
     @RequestMapping( "/play" )
@@ -59,11 +64,14 @@ public class MyContoller {
         }
     }
 
-    public List<List<String>> heatMapColors( double[][] heatMap ) {
+    public List<List<Cell>> heatMapColors( double[][] heatMap ) {
+        if ( heatMap == null ) {
+            return new ArrayList<>();
+        }
         Double min = ArrayStream.reduce( heatMap, Double::min, Double.MAX_VALUE );
         Double max = ArrayStream.reduce( heatMap, Double::max, Double.MIN_VALUE );
         Function<Double, Double> scaler = x -> x < 0 ? -x / min : x / max;
-        List<List<String>> result = ArrayStream.mapToList( heatMap, heat -> {
+        List<List<Cell>> result = ArrayStream.mapToList( heatMap, heat -> {
             double scale = scaler.apply( heat );
             int red = 0;
             int green = 0;
@@ -76,7 +84,7 @@ public class MyContoller {
             }
             int blue = 0;
             int color = ( red << 16 ) + ( green << 8 ) + blue;
-            return "#" + String.format( "%06X", color );
+            return new Cell( heat, "#" + String.format( "%06X", color ), "" );
         } );
         return result;
     }

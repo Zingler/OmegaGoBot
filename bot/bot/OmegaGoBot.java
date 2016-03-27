@@ -19,7 +19,6 @@ package bot;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -29,9 +28,19 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import move.Move;
+import util.MaxSizePriorityQueue;
+import util.MaxSizePriorityQueue.Score;
+import bot.strategies.AttackFromStrengthStrategy;
+import bot.strategies.AttackGroupCandidateStrategy;
+import bot.strategies.AttackingMoveStrategy;
+import bot.strategies.ForcedMovedAttackStrategy;
+import bot.strategies.LibertySizeRatioAttackCandidateStrategy;
+import bot.strategies.SequentialAttackGroupCandidateStrategy;
+import bot.strategies.SequentialAttackingMoveStrategy;
 import field.Field;
 import field.Group;
 
@@ -46,6 +55,21 @@ import field.Group;
 
 public class OmegaGoBot implements Bot {
 
+    AttackGroupCandidateStrategy attackCandidateStrategy = SequentialAttackGroupCandidateStrategy.builder()
+            .strat( new LibertySizeRatioAttackCandidateStrategy() ).build();
+    private AttackingMoveStrategy attackStrategy = SequentialAttackingMoveStrategy.builder()
+            .strat( new ForcedMovedAttackStrategy() )
+            .strat( new AttackFromStrengthStrategy() ).build();
+
+    OneLibertyLogic oneLiberyLogic = new OneLibertyLogic();
+
+    List<DiagnosticRecorder> recorders = new ArrayList<>();
+    {
+        this.recorders.add( this.attackCandidateStrategy );
+        this.recorders.add( new MoveTimer() );
+        this.recorders.add( this.attackStrategy );
+    }
+
     Random r = new Random();
 
     /**
@@ -56,24 +80,32 @@ public class OmegaGoBot implements Bot {
      */
     @Override
     public Move getMove( GameState state, int timeout ) {
-        return getMoveWithDiagnostics( state, timeout ).getMove();
+        return getMoveWithDiagnostics( state, timeout ).move();
     }
 
     @Override
-    public MovesWithDiagnostics getMoveWithDiagnostics( GameState state, int timeout ) {
+    public MoveWithDiagnostics getMoveWithDiagnostics( GameState state, int timeout ) {
+        this.recorders.forEach( DiagnosticRecorder::newTurn );
+        MoveWithDiagnostics move = doLogic( state, timeout );
+        this.recorders.forEach( r -> r.record( move ) );
+
+        return move;
+    }
+
+    public MoveWithDiagnostics doLogic( GameState state, int timeout ) {
         state.setTimebank( timeout );
 
-        MovesWithDiagnostics finalMove = new MovesWithDiagnostics();
+        MoveWithDiagnostics finalMove = new MoveWithDiagnostics();
 
         Field f = state.getField();
 
         double[][] heatMap = influenceHeatMap( f );
-        finalMove.setInfluenceHeatMap( heatMap );
+        finalMove.influenceHeatMap( heatMap );
         double[][] laplace = laplace( f );
-        finalMove.setLaplace( laplace );
+        finalMove.laplace( laplace );
 
         List<Move> availableMoves = f.getAvailableMoves();
-        List<Move> notHoribleMoves = new ArrayList<>();
+        Set<Move> notHoribleMoves = new HashSet<>();
 
         // Filters out moves that could immediately be captured. TODO support
         // snap back attacks if we start doing search.
@@ -84,53 +116,104 @@ public class OmegaGoBot implements Bot {
             }
         }
 
-        Set<Move> oneLibertySpots = new HashSet<>();
-        for ( int i = 0; i < f.getRows(); i++ ) {
-            for ( int j = 0; j < f.getColumns(); j++ ) {
-                Optional<Group> g = f.getGroupAt( i, j );
-                if ( g.isPresent() && g.get().getLibertyCount() == 1 ) {
-                    oneLibertySpots.addAll( g.get().getLiberties() );
-                }
+        List<Move> oneLibertyMoves = this.oneLiberyLogic.getOneLibertyMoves( f );
+
+        List<Move> safeOneLibertyMoves = oneLibertyMoves.stream().filter( notHoribleMoves::contains ).collect( Collectors.toList() );
+
+        if ( !safeOneLibertyMoves.isEmpty() ) {
+            List<Move> moves = safeOneLibertyMoves.stream().limit( 5 ).collect( Collectors.toList() );
+            setIfNonEmpty( finalMove, moves );
+            finalMove.type( "Save or capture largest" );
+            return finalMove;
+        }
+        if ( state.getRoundNumber() < 2 ) {
+            List<Move> best = minBy( notHoribleMoves, ( Move m ) -> edgeCenterHeuristic( m, f ), 5 );
+            setIfNonEmpty( finalMove, best );
+            return finalMove.type( "Opening Corners" );
+        } else if ( state.getRoundNumber() < 6 ) {
+            List<Move> best = minBy( notHoribleMoves, ( Move m ) -> centerHeuristic( m, f ), 5 );
+            setIfNonEmpty( finalMove, best );
+            return finalMove.type( "Opening Circle" );
+        } else {
+            Predicate<Move> notHoribleFilter = notHoribleMoves::contains;
+
+            List<Group> attackableGroups = this.attackCandidateStrategy.getAttackCandidates( f );
+            List<Move> attackingMoves = this.attackStrategy.getAttackingMoves( f, attackableGroups );
+
+            attackingMoves = attackingMoves.stream().filter( notHoribleFilter ).collect( Collectors.toList() );
+            if ( !attackingMoves.isEmpty() ) {
+                setIfNonEmpty( finalMove, attackingMoves );
+                finalMove.type( "Attack" );
+                return finalMove;
+            }
+
+            Set<Move> influenceMoves;
+
+            if ( state.getRoundNumber() < 70 ) {
+                final int rmod = f.getRows() - 1;
+                final int cmod = f.getColumns() - 1;
+                Predicate<Move> notFirstLine = m -> m.getRow() % rmod != 0 && m.getCol() % cmod != 0;
+                influenceMoves = notHoribleMoves.stream().filter( notFirstLine ).collect( Collectors.toSet() );
+            } else {
+                influenceMoves = notHoribleMoves;
+            }
+            if ( state.getRoundNumber() % 4 != 0 ) {
+                List<Move> best = minBy( influenceMoves, ( Move m ) -> {
+                    double heat = laplace[m.getRow()][m.getCol()];
+                    heat += ( this.r.nextDouble() * .05 - .025 );
+                    return Math.abs( heat );
+                }, 5 );
+                setIfNonEmpty( finalMove, best );
+                finalMove.type( "Laplace" );
+                return finalMove;
+            } else {
+                List<Move> best = minBy( influenceMoves, ( Move m ) -> {
+                    double heat = heatMap[m.getRow()][m.getCol()];
+                    heat += ( this.r.nextDouble() * .05 );
+                    return Math.abs( heat );
+                }, 5 );
+                setIfNonEmpty( finalMove, best );
+                finalMove.type( "Exponential Weighing" );
+                return finalMove;
             }
         }
 
-        List<Move> capturesOrSaves = notHoribleMoves.stream().filter( oneLibertySpots::contains ).collect( Collectors.toList() );
-        if ( !capturesOrSaves.isEmpty() ) {
-            Collections.shuffle( capturesOrSaves );
-            List<Move> moves = capturesOrSaves.stream().limit( 5 ).collect( Collectors.toList() );
-            return finalMove.setMove( moves.get( 0 ) ).setOtherTopMoves( moves.subList( 1, moves.size() ) );
-        }
-
-        if ( state.getRoundNumber() < 3 ) {
-            List<Move> best = minBy( notHoribleMoves, ( Move m ) -> edgeCenterHeuristic( m, f ), 5 );
-            setIfNonEmpty( finalMove, best );
-            return finalMove;
-        } else if ( state.getRoundNumber() < 8 ) {
-            List<Move> best = minBy( notHoribleMoves, ( Move m ) -> centerHeuristic( m, f ), 5 );
-            setIfNonEmpty( finalMove, best );
-            return finalMove;
-        } else if ( state.getRoundNumber() < 250 ) {
-            List<Move> best = minBy( notHoribleMoves, ( Move m ) -> {
-                double heat = laplace[m.getRow()][m.getCol()];
-                heat += ( this.r.nextDouble() * .05 - .025 );
-                return Math.abs( heat );
-            }, 5 );
-            setIfNonEmpty( finalMove, best );
-            return finalMove;
-        }
-
-        List<Move> availableRandomMoves = notHoribleMoves;
-
-        int moveCount = availableRandomMoves.size();
-        if ( moveCount == 0 ) {
-            return null;
-        }
-        return finalMove.setMove( availableRandomMoves.get( this.r.nextInt( moveCount ) ) );
+        // Set<Move> availableRandomMoves = notHoribleMoves;
+        //
+        // int moveCount = availableRandomMoves.size();
+        // if ( moveCount == 0 ) {
+        // return null;
+        // }
+        // return finalMove.move( availableRandomMoves.get( this.r.nextInt(
+        // moveCount ) ) ).type( "Random" );
     }
 
-    private void setIfNonEmpty( MovesWithDiagnostics finalMove, List<Move> bestMoves ) {
+    private List<Move> attackWeakHeruistic( Map<Group, Double> groupsToAttackScore, Field f ) {
+        double attackThreshold = .8;
+        List<Group> targets = groupsToAttackScore.entrySet().stream().filter( e -> e.getValue() > attackThreshold ).map( Entry::getKey )
+                .collect( Collectors.toList() );
+
+        MaxSizePriorityQueue<Move> bestMoves = new MaxSizePriorityQueue<>( 10, true );
+        // TODO this is way oversimplified
+        for ( Group g : targets ) {
+            Move someMoveInGroup = g.getMoves().iterator().next();
+            for ( Move m : g.getLiberties() ) {
+                Field test = f.simulateMyMove( m );
+                Optional<Group> group = test.getGroupAt( someMoveInGroup.getRow(), someMoveInGroup.getCol() );
+                int remainingLiberties = 0;
+                if ( group.isPresent() ) {
+                    remainingLiberties = group.get().getLibertyCount();
+                }
+                bestMoves.put( m, remainingLiberties );
+            }
+        }
+
+        return bestMoves.getAll().stream().map( Score::getElement ).collect( Collectors.toList() );
+    }
+
+    private void setIfNonEmpty( MoveWithDiagnostics finalMove, List<Move> bestMoves ) {
         if ( !bestMoves.isEmpty() ) {
-            finalMove.setMove( bestMoves.get( 0 ) ).setOtherTopMoves( rest( bestMoves ) );
+            finalMove.move( bestMoves.get( 0 ) ).otherTopMoves( rest( bestMoves ) );
         }
     }
 

@@ -1,9 +1,11 @@
 var Model = function() {
 	var my = this;
 	my.board = ko.observable();
-	my.influenceColors = ko.observable();
-	my.laplaceColors = ko.observable();
+	my.boardViews = ko.observable([]);
 	my.botPlayAfterHuman = ko.observable(false);
+	my.numSteps = ko.observable(1);
+	my.lastMoveType = ko.observable();
+	my.time = ko.observable();
 	
 	my.newGame = function() {
 		$.getJSON("/newgame", function(data) { 
@@ -11,15 +13,16 @@ var Model = function() {
 		})
 	}
 	my.step = function() {
-		$.getJSON("/step", function(data) { 
+		$.getJSON("/step?steps="+my.numSteps(), function(data) { 
 		    my.update(data);
 		})
 	}
 
 	my.update = function(data) {
 		my.board(data.board);
-	    my.influenceColors(data.influenceColors);
-	    my.laplaceColors(data.laplaceColors);
+	    my.boardViews(data.boardViews);
+	    my.lastMoveType(data.lastMoveType);
+	    my.time(data.time);
 	}
 	
 	my.play = function(data, event) {
