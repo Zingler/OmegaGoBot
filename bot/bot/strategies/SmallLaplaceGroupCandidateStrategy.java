@@ -14,7 +14,8 @@ public class SmallLaplaceGroupCandidateStrategy implements AttackGroupCandidateS
     public List<Group> getAttackCandidates( Field f ) {
         List<Group> groups = f.getGroups().getUniqueGroups().stream()
                 .filter( g -> g.getPlayerId() == f.getOpponentId() )
-                .map( g -> new Score<Group>( g, ( f.getLaplaceGroupSize( g.getAnyMove(), .2 ) - g.getMoves().size() ) / g.getLibertyCount() ) )
+                .map( g -> new Score<Group>( g, ( f.getLaplaceGroup( g.getAnyMove(), .2 ).getMoveCount() - g.getMoves().size() ) / g
+                                                        .getLibertyCount() ) )
                 .filter( s -> s.getScore() < 2 )
                 .sorted()
                 .map( s -> s.getElement() )

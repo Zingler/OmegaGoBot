@@ -35,6 +35,7 @@ import move.Move;
 import bot.strategies.AttackFromStrengthStrategy;
 import bot.strategies.AttackGroupCandidateStrategy;
 import bot.strategies.AttackingMoveStrategy;
+import bot.strategies.DoubleAtariCandidateStrategy;
 import bot.strategies.ForcedMovedAttackStrategy;
 import bot.strategies.LibertySizeRatioAttackCandidateStrategy;
 import bot.strategies.SequentialAttackGroupCandidateStrategy;
@@ -54,10 +55,14 @@ import field.Group;
 
 public class OmegaGoBot implements Bot {
 
+    AttackGroupCandidateStrategy highPriorityAttackCandidateStrategy = SequentialAttackGroupCandidateStrategy.builder()
+            .strat( new DoubleAtariCandidateStrategy() ).build();
+
     AttackGroupCandidateStrategy attackCandidateStrategy = SequentialAttackGroupCandidateStrategy.builder()
             .strat( new SmallLaplaceGroupCandidateStrategy() )
             .strat( new LibertySizeRatioAttackCandidateStrategy() ).build();
     private AttackingMoveStrategy attackStrategy = SequentialAttackingMoveStrategy.builder()
+            .strat( new DoubleAtariAttackStrategy() )
             .strat( new ForcedMovedAttackStrategy() )
             .strat( new AttackFromStrengthStrategy() ).build();
 
@@ -116,6 +121,7 @@ public class OmegaGoBot implements Bot {
                 notHoribleMoves.add( m );
             }
         }
+        Predicate<Move> notHoribleFilter = notHoribleMoves::contains;
 
         List<Move> oneLibertyMoves = this.oneLiberyLogic.getOneLibertyMoves( f );
         List<Move> safeOneLibertyMoves = oneLibertyMoves.stream().filter( notHoribleMoves::contains ).collect( Collectors.toList() );
@@ -124,6 +130,15 @@ public class OmegaGoBot implements Bot {
             List<Move> moves = safeOneLibertyMoves.stream().limit( 5 ).collect( Collectors.toList() );
             setIfNonEmpty( finalMove, moves );
             finalMove.type( "Save or capture largest" );
+            return finalMove;
+        }
+
+        List<Group> highPriorityAttackableGroups = this.highPriorityAttackCandidateStrategy.getAttackCandidates( f );
+        List<Move> highPriorityAttackingMoves = this.attackStrategy.getAttackingMoves( f, highPriorityAttackableGroups );
+        highPriorityAttackingMoves = highPriorityAttackingMoves.stream().filter( notHoribleFilter ).collect( Collectors.toList() );
+        if ( !highPriorityAttackingMoves.isEmpty() ) {
+            setIfNonEmpty( finalMove, highPriorityAttackingMoves );
+            finalMove.type( "High priority attack" );
             return finalMove;
         }
 
@@ -143,8 +158,6 @@ public class OmegaGoBot implements Bot {
             setIfNonEmpty( finalMove, best );
             return finalMove.type( "Opening Circle" );
         } else {
-            Predicate<Move> notHoribleFilter = notHoribleMoves::contains;
-
             List<Group> attackableGroups = this.attackCandidateStrategy.getAttackCandidates( f );
             List<Move> attackingMoves = this.attackStrategy.getAttackingMoves( f, attackableGroups );
 

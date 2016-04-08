@@ -46,6 +46,7 @@ public class MyContoller {
                 .lastMove( lastMoveDiagnostics.move() )
                 .lastMoveType( lastMoveDiagnostics.type() )
                 .time( lastMoveDiagnostics.millis() )
+                .roundNumber( this.game.getRoundNumber() )
                 .otherMovesConsidered( lastMoveDiagnostics.otherTopMoves() ).build().finish();
     }
 

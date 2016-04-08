@@ -122,6 +122,9 @@ public class Field {
     // TODO, this only checks if we match the immediately last board position
     // (not multiple Kos)
     private boolean isKoMove( int row, int col ) {
+        if ( this.field[row][col] < 0 ) {
+            return true;
+        }
         Field f = simulateMyMove( new Move( row, col ) );
         if ( f.isSameBoard( this.lastField ) ) {
             return true;
@@ -382,27 +385,30 @@ public class Field {
         return this.field;
     }
 
-    public double getLaplaceGroupSize( Move m, double lowerBound ) {
+    public Group getLaplaceGroup( Move m, double lowerBound ) {
         calculateLaplace();
         Function<Double, Boolean> membershipTest = this.laplace[m.getRow()][m.getCol()] > 0 ? x -> x > lowerBound : x -> x < -lowerBound;
 
         boolean[][] visited = new boolean[this.rows][this.cols];
-        return getLaplaceGroupSizeRecurse( visited, m.getRow(), m.getCol(), membershipTest );
+        // TODO player is hardcoded to 1.
+        Group g = new Group( 1 );
+        g.addMove( m );
+        getLaplaceGroupRecurse( visited, m.getRow(), m.getCol(), membershipTest, g );
+        return g;
     }
 
-    private double getLaplaceGroupSizeRecurse( boolean[][] visited, int row, int col, Function<Double, Boolean> test ) {
+    private void getLaplaceGroupRecurse( boolean[][] visited, int row, int col, Function<Double, Boolean> test, Group g ) {
         if ( visited[row][col] ) {
-            return 0;
+            return;
         }
         if ( test.apply( this.laplace[row][col] ) ) {
             visited[row][col] = true;
-            int count = 1;
+            g.addMove( new Move( row, col ) );
             for ( Move m : this.validAdjacentPoints( new Move( row, col ) ) ) {
-                count += getLaplaceGroupSizeRecurse( visited, m.getRow(), m.getCol(), test );
+                getLaplaceGroupRecurse( visited, m.getRow(), m.getCol(), test, g );
             }
-            return count;
         } else {
-            return 0;
+            return;
         }
     }
 
@@ -428,7 +434,7 @@ public class Field {
                     int player = this.getPlayerAt( row, col );
                     if ( player == this.getMyId() ) {
                         this.laplace[row][col] = 1;
-                    } else if ( player != 0 ) {
+                    } else if ( player == this.getOpponentId() ) {
                         this.laplace[row][col] = -1;
                     } else {
                         List<Move> adjacent = this.validAdjacentPoints( row, col );

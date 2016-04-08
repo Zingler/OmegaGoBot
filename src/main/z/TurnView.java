@@ -26,6 +26,7 @@ public class TurnView {
     public Move lastMove;
     public String lastMoveType;
     public long time;
+    public int roundNumber;
     public List<Move> otherMovesConsidered;
 
     @Getter( lazy = true )

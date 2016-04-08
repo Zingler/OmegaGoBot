@@ -54,6 +54,7 @@ Number of turns: <input data-bind="value: numSteps"/>
 
 <p>Last move played was of type: <span data-bind="text: lastMoveType"></span></p>
 <p>Time taken: <span data-bind="text: time"></span>ms</p>
+<p>Round number: <span data-bind="text: roundNumber"></span></p>
 
 <div class="tables">
 <div class="section">

@@ -29,7 +29,7 @@ public class Game {
         this.players.add( new OmegaGoBot() );
         this.players.add( new OmegaGoBot() );
         this.player = 1;
-        this.turn = 0;
+        this.turn = 1;
     }
 
     public void step() {
@@ -57,5 +57,9 @@ public class Game {
     public void manualPlay( int row, int col ) {
         this.lastMoveDiagnostics = null;
         play( new Move( row, col ) );
+    }
+
+    public int getRoundNumber() {
+        return this.currentState.getRoundNumber();
     }
 }

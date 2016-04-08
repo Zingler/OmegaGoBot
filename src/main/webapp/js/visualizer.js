@@ -6,6 +6,7 @@ var Model = function() {
 	my.numSteps = ko.observable(1);
 	my.lastMoveType = ko.observable();
 	my.time = ko.observable();
+	my.roundNumber = ko.observable();
 	
 	my.newGame = function() {
 		$.getJSON("/newgame", function(data) { 
@@ -23,6 +24,7 @@ var Model = function() {
 	    my.boardViews(data.boardViews);
 	    my.lastMoveType(data.lastMoveType);
 	    my.time(data.time);
+	    my.roundNumber(data.roundNumber);
 	}
 	
 	my.play = function(data, event) {

@@ -17,6 +17,10 @@ public class Group {
         return this.liberties.size();
     }
 
+    public int getMoveCount() {
+        return this.moves.size();
+    }
+
     public void addMove( Move move ) {
         this.moves.add( move );
     }
